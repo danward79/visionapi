@@ -14,7 +14,7 @@ import (
 )
 
 func init() {
-	fmt.Println("Google Vision API - Interface")
+	fmt.Println("Google Vision API - Command Line Interface")
 }
 
 func main() {
@@ -30,39 +30,54 @@ func main() {
 		os.Exit(1)
 	}
 
+	var url = "https://vision.googleapis.com/v1/images:annotate?key=" + *apiKey
+
+	if *file != "" {
+		log.Println("Processing: ", file)
+		processImage(*file, url)
+	}
+
 	if *pipe {
-		fmt.Println("Piping it!")
 
-		info, err := os.Stdin.Stat()
-		if err != nil {
-			log.Fatal(err)
+		scanner := bufio.NewScanner(os.Stdin)
+
+		for scanner.Scan() {
+
+			file := scanner.Text()
+			log.Println("Processing: ", file)
+
+			s, err := processImage(file, url)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			log.Println("Result: ", s)
 		}
-		fmt.Println(info.Name())
-		fmt.Println(info)
 
-		reader := bufio.NewReader(os.Stdin)
-		l, _, _ := reader.ReadLine()
-		fmt.Println(string(l))
-		*file = string(l)
+		if err := scanner.Err(); err != nil {
+			fmt.Fprintln(os.Stderr, "Error, reading stdin:", err)
+		}
+
 	}
-
-	encodedImage, err := encodeBase64(*file)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	var url = "https://vision.googleapis.com/v1/images:annotate?key="
-
-	s, err := postRequest(url+*apiKey, marshalJSON(encodedImage))
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	fmt.Println(s)
 
 }
 
-//postRequest
+//processImage wrapper for encoding, marshaling and request
+func processImage(f, url string) (string, error) {
+	encodedImage, err := encodeBase64(f)
+	if err != nil {
+		return "", err
+	}
+
+	s, err := postRequest(url, marshalJSON(encodedImage))
+	if err != nil {
+		return "", err
+	}
+
+	return s, nil
+}
+
+//postRequest to service
 func postRequest(u string, j []byte) (string, error) {
 
 	req, err := http.NewRequest("POST", u, bytes.NewBuffer(j))
@@ -74,7 +89,7 @@ func postRequest(u string, j []byte) (string, error) {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		panic(err)
+		return "", fmt.Errorf("Request Err: %v", err)
 	}
 	defer resp.Body.Close()
 
@@ -82,11 +97,6 @@ func postRequest(u string, j []byte) (string, error) {
 		body, _ := ioutil.ReadAll(resp.Body)
 		return string(body), nil
 	}
-
-	fmt.Println("response Status:", resp.Status)
-	fmt.Println("response Headers:", resp.Header)
-	body, _ := ioutil.ReadAll(resp.Body)
-	fmt.Println("response Body:", string(body))
 
 	return "", fmt.Errorf("Request Err: %v", err)
 }
