@@ -11,6 +11,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+
+	"github.com/fsnotify/fsnotify"
 )
 
 func init() {
@@ -18,13 +20,14 @@ func init() {
 }
 
 func main() {
+	// TODO: Consider adding LANDMARK_DETECTION, LOGO_DETECTION, LABEL_DETECTION, etc
 	apiKey := flag.String("k", "", "-k api key")
 	pipe := flag.Bool("p", false, "-p use unix pipe to pass a file into Vision")
-	//watch := flag.String("w", "", "-w watch a path for new files")
+	watch := flag.String("w", "", "-w watch a path for new files")
 	file := flag.String("f", "", "-f file path")
 	flag.Parse()
 
-	if *apiKey == "" && (*pipe || *file == "") {
+	if *apiKey == "" && (*pipe || *file == "" || *watch == "") {
 		fmt.Println("No command line arguments specified, usage: ")
 		flag.PrintDefaults()
 		os.Exit(1)
@@ -33,8 +36,12 @@ func main() {
 	var url = "https://vision.googleapis.com/v1/images:annotate?key=" + *apiKey
 
 	if *file != "" {
-		log.Println("Processing: ", file)
-		processImage(*file, url)
+
+		err := processImage(*file, url)
+		if err != nil {
+			log.Fatal(err)
+		}
+
 	}
 
 	if *pipe {
@@ -44,43 +51,87 @@ func main() {
 		for scanner.Scan() {
 
 			file := scanner.Text()
-			log.Println("Processing: ", file)
 
-			s, err := processImage(file, url)
+			err := processImage(file, url)
 			if err != nil {
 				log.Fatal(err)
 			}
 
-			log.Println("Result: ", s)
 		}
 
 		if err := scanner.Err(); err != nil {
 			fmt.Fprintln(os.Stderr, "Error, reading stdin:", err)
 		}
-
 	}
 
+	if *watch != "" {
+		watcherDone := make(chan struct{})
+		err := watchPath(*watch, url, watcherDone)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+}
+
+//watchPath
+func watchPath(path, url string, done chan struct{}) error {
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return fmt.Errorf("NewWatcher Err: %v", err)
+	}
+	defer watcher.Close()
+
+	go func() {
+		for {
+			select {
+			case event := <-watcher.Events:
+
+				if event.Op&fsnotify.Create == fsnotify.Create {
+
+					err := processImage(event.Name, url)
+					if err != nil {
+						log.Fatal(err)
+					}
+
+				}
+
+			case err := <-watcher.Errors:
+				log.Println("Watcher error:", err)
+			}
+		}
+	}()
+
+	err = watcher.Add(path)
+	if err != nil {
+		return fmt.Errorf("Watcher Add Err: %v", err)
+	}
+	<-done
+	return nil
 }
 
 //processImage wrapper for encoding, marshaling and request
-func processImage(f, url string) (string, error) {
-	encodedImage, err := encodeBase64(f)
+func processImage(filePath, url string) error {
+	log.Println("Processing: ", filePath)
+
+	encodedImage, err := encodeBase64(filePath)
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	s, err := postRequest(url, marshalJSON(encodedImage))
 	if err != nil {
-		return "", err
+		return err
 	}
 
-	return s, nil
+	fmt.Println("Result: ", s)
+	return nil
 }
 
 //postRequest to service
-func postRequest(u string, j []byte) (string, error) {
+func postRequest(url string, json []byte) (string, error) {
 
-	req, err := http.NewRequest("POST", u, bytes.NewBuffer(j))
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(json))
 	req.Header.Set("Content-Type", "application/json")
 	if err != nil {
 		return "", fmt.Errorf("Request Err: %v", err)
@@ -103,6 +154,7 @@ func postRequest(u string, j []byte) (string, error) {
 
 //encodedImage takes a file and returns a string encoded in base64
 func encodeBase64(filePath string) (string, error) {
+
 	f, err := os.Open(filePath)
 	if err != nil {
 		return "", fmt.Errorf("Open File: %v", err)
