@@ -31,34 +31,13 @@ type Feature struct {
 	MaxResults string `json:"maxresults,omitempty"`
 }
 
-const (
-	//TypeUnspecified Unspecified feature type.
-	TypeUnspecified = iota
-	//FaceDetection Run face detection.
-	FaceDetection
-	//LandmarkDetection Run landmark detection.
-	LandmarkDetection
-	//LogoDetection Run logo detection.
-	LogoDetection
-	//LabelDetection Run label detection.
-	LabelDetection
-	//TextDetection Run OCR.
-	TextDetection
-	//SafeSearchDetection Run various computer vision models to
-	SafeSearchDetection
-	//ImageDetection Compute a set of properties about the image (such as the image's dominant colors)
-	ImageDetection
-)
-
 //marshalJSON JSON message
 func marshalJSON(image string, requiredFeatures *[]Feature) []byte {
 
-	i := Image{image}
-	r := Request{&i, requiredFeatures}
+	r := Request{&Image{image}, requiredFeatures}
 	bdy := Body{&[]Request{r}}
 
 	b, err := json.MarshalIndent(bdy, "", "  ")
-	//b, err := json.Marshal(bdy)
 	if err != nil {
 		fmt.Println(err)
 	}
