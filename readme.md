@@ -27,15 +27,20 @@ for example
 go run ~/go/src/github.com/danward79/visionapi/main.go -k qwerty1234567890 -w ./tmp
 ```
 
+In addition to the above, the command line can have sub-commands added to specify the detections required.
+
+- label - LABEL_DETECTION	Execute Image Content Analysis on the entire image and return
+- text - TEXT_DETECTION	Perform Optical Character Recognition (OCR) on - text within the image
+- face - FACE_DETECTION	Detect faces within the image
+- land - LANDMARK_DETECTION	Detect geographic landmarks within the image
+- logo - LOGO_DETECTION	Detect company logos within the image
+- safe - SAFE_SEARCH_DETECTION	Determine image safe search properties on the image
+- image - IMAGE_PROPERTIES	Compute a set of properties about the image (such as the image's dominant colors)
+- if nothing is specified the default is text OCR feature recognition.
+
+for example: Specifying text and label detections
+```
+go run ~/go/src/github.com/danward79/visionapi/main.go -k qwerty1234567890 -w ./tmp -- -text -label
+```
+
 Returns a JSON encoded string at the moment.
-
-TODO
-- Add options around what is detected. For example:
-
-  - LABEL_DETECTION	Execute Image Content Analysis on the entire image and return
-  - TEXT_DETECTION	Perform Optical Character Recognition (OCR) on - text within the image
-  - FACE_DETECTION	Detect faces within the image
-  - LANDMARK_DETECTION	Detect geographic landmarks within the image
-  - LOGO_DETECTION	Detect company logos within the image
-  - SAFE_SEARCH_DETECTION	Determine image safe search properties on the image
-  - IMAGE_PROPERTIES	Compute a set of properties about the image (such as the image's dominant colors)
