@@ -25,6 +25,8 @@ func main() {
 	file := flag.String("f", "", "-f file path")
 	flag.Parse()
 
+	requiredFeatures := buildFeatures(handleSubCommandFlags(flag.Args()[:]))
+
 	if *apiKey == "" && (*pipe || *file == "" || *watch == "") {
 		fmt.Println("No command line arguments specified, usage: ")
 		flag.PrintDefaults()
@@ -34,12 +36,10 @@ func main() {
 	var url = "https://vision.googleapis.com/v1/images:annotate?key=" + *apiKey
 
 	if *file != "" {
-
-		err := processImage(*file, url)
+		err := processImage(*file, url, &requiredFeatures)
 		if err != nil {
 			log.Fatal(err)
 		}
-
 	}
 
 	if *pipe {
@@ -50,7 +50,7 @@ func main() {
 
 			file := scanner.Text()
 
-			err := processImage(file, url)
+			err := processImage(file, url, &requiredFeatures)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -64,7 +64,7 @@ func main() {
 
 	if *watch != "" {
 		watcherDone := make(chan struct{})
-		err := watchPath(*watch, url, watcherDone)
+		err := watchPath(*watch, url, watcherDone, &requiredFeatures)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -72,7 +72,7 @@ func main() {
 }
 
 //watchPath
-func watchPath(path, url string, done chan struct{}) error {
+func watchPath(path, url string, done chan struct{}, requiredFeatures *[]Feature) error {
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -87,7 +87,7 @@ func watchPath(path, url string, done chan struct{}) error {
 
 				if event.Op&fsnotify.Create == fsnotify.Create {
 
-					err := processImage(event.Name, url)
+					err := processImage(event.Name, url, requiredFeatures)
 					if err != nil {
 						log.Fatal(err)
 					}
@@ -109,7 +109,7 @@ func watchPath(path, url string, done chan struct{}) error {
 }
 
 //processImage wrapper for encoding, marshaling and request
-func processImage(filePath, url string) error {
+func processImage(filePath, url string, requiredFeatures *[]Feature) error {
 	log.Println("Processing: ", filePath)
 
 	encodedImage, err := encodeBase64(filePath)
@@ -117,7 +117,7 @@ func processImage(filePath, url string) error {
 		return err
 	}
 
-	s, err := postRequest(url, marshalJSON(encodedImage))
+	s, err := postRequest(url, marshalJSON(encodedImage, requiredFeatures))
 	if err != nil {
 		return err
 	}
@@ -132,7 +132,7 @@ func postRequest(url string, json []byte) (string, error) {
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(json))
 	req.Header.Set("Content-Type", "application/json")
 	if err != nil {
-		return "", fmt.Errorf("Request Err: %v", err)
+		return "", fmt.Errorf("Post Request Err: %v", err)
 	}
 
 	client := &http.Client{}
@@ -146,6 +146,6 @@ func postRequest(url string, json []byte) (string, error) {
 		body, _ := ioutil.ReadAll(resp.Body)
 		return string(body), nil
 	}
-
-	return "", fmt.Errorf("Request Err: %v", err)
+	body, _ := ioutil.ReadAll(resp.Body)
+	return "", fmt.Errorf("Other Request Err: %v, %v, %v", err, resp.StatusCode, string(body))
 }
